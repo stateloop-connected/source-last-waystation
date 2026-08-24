@@ -1,12 +1,16 @@
 import { CornerDownLeft, MapPin, Timer, Users } from 'lucide-react'
 import type { ExpeditionState, HeroState } from '../core'
 import { POLICY_LABELS, formatCountdown } from '../app/presentation'
+import type { VisualEvent } from '../presentation/visual-events'
+import { ExpeditionScene } from './expedition-scene'
 
 type ActiveExpeditionProps = {
   expedition: ExpeditionState
   heroes: readonly HeroState[]
   now: number
   regionName: string
+  visualEvents: readonly VisualEvent[]
+  isPageVisible: boolean
   onRetreat: () => void
 }
 
@@ -22,6 +26,8 @@ export function ActiveExpedition({
   heroes,
   now,
   regionName,
+  visualEvents,
+  isPageVisible,
   onRetreat,
 }: ActiveExpeditionProps) {
   const party = expedition.partyHeroIds
@@ -39,6 +45,14 @@ export function ActiveExpedition({
         </div>
         <span className="section-index">01</span>
       </div>
+
+      <ExpeditionScene
+        expedition={expedition}
+        heroes={heroes}
+        paused={!isPageVisible}
+        regionName={regionName}
+        visualEvents={visualEvents}
+      />
 
       <div className="expedition-status-grid">
         <div>
@@ -69,11 +83,7 @@ export function ActiveExpedition({
         </div>
         <div
           className="progress-track"
-          aria-label={`已完成 ${expedition.processedEventCount} / ${expedition.maxEventCount}`}
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={expedition.maxEventCount}
-          aria-valuenow={expedition.processedEventCount}
+          aria-hidden="true"
         >
           <span style={{ width: `${progress}%` }} />
         </div>

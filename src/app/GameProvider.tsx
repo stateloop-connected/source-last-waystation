@@ -4,6 +4,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type PropsWithChildren,
 } from 'react'
 import {
@@ -16,6 +17,11 @@ import {
   type ExpeditionPolicy,
   type GameState,
 } from '../core'
+import { useVisualEffects } from '../presentation/useVisualEffects'
+import type {
+  GameTransitionSource,
+  GameTransitionSummary,
+} from '../presentation/visual-events'
 import { createSaveRepository } from '../save/saveRepository'
 import { normalizeGameForNow } from '../save/saveNormalization'
 import { scheduleGameTimers } from '../save/saveTimers'
@@ -35,16 +41,45 @@ const AUTO_SAVE_INTERVAL_MS = 5_000
 const TICK_INTERVAL_MS = 1_000
 const NOTICE_DURATION_MS = 4_000
 
-function initialState(): GameAppState {
+type GameBootstrap = {
+  appState: GameAppState
+  transitionSummary?: GameTransitionSummary
+  persistAdvancedState: boolean
+}
+
+type GameReplacementOptions = {
+  message?: string
+  tone?: NoticeTone
+  saveImmediately?: boolean
+  explicitReplacement?: boolean
+  transitionSummary?: GameTransitionSummary
+}
+
+function loadInitialState(): GameBootstrap {
   const now = Date.now()
   const fallback = createNewGame(now)
-  return createInitialGameAppState(now, repository.load(now, fallback))
+  const loaded = repository.load(now, fallback)
+  return {
+    appState: createInitialGameAppState(now, loaded),
+    ...(loaded.ok && loaded.transitionSummary !== undefined
+      ? { transitionSummary: loaded.transitionSummary }
+      : {}),
+    persistAdvancedState:
+      loaded.ok &&
+      loaded.source === 'storage' &&
+      loaded.migration === undefined &&
+      loaded.transitionSummary !== undefined,
+  }
 }
 
 export function GameProvider({ children }: PropsWithChildren) {
-  const [state, dispatch] = useReducer(gameReducer, undefined, initialState)
+  const [bootstrap] = useState(loadInitialState)
+  const [state, dispatch] = useReducer(gameReducer, bootstrap.appState)
   const gameRef = useRef(state.game)
+  const bootstrapSummaryRef = useRef(bootstrap.transitionSummary ?? null)
+  const persistBootstrapRef = useRef(bootstrap.persistAdvancedState)
   const noticeSequence = useRef(0)
+  const { presentBootstrapSummary, presentTransition } = useVisualEffects()
 
   const createNotice = useCallback(
     (message: string, tone: NoticeTone): GameNotice => ({
@@ -54,19 +89,6 @@ export function GameProvider({ children }: PropsWithChildren) {
     }),
     [],
   )
-
-  const prepareCurrentGame = useCallback(() => {
-    const now = Date.now()
-    const current = gameRef.current
-    if (current.lastAdvancedAt <= now) {
-      return { game: current, now }
-    }
-
-    const game = normalizeGameForNow(current, now)
-    gameRef.current = game
-    dispatch({ type: 'set-game', game, now })
-    return { game, now }
-  }, [])
 
   const reportSave = useCallback(
     (
@@ -95,32 +117,61 @@ export function GameProvider({ children }: PropsWithChildren) {
     (
       game: GameState,
       now: number,
-      message?: string,
-      tone: NoticeTone = 'success',
-      saveImmediately = false,
-      explicitReplacement = false,
+      source: GameTransitionSource,
+      options: GameReplacementOptions = {},
     ) => {
+      const previous = gameRef.current
       gameRef.current = game
+      presentTransition(
+        previous,
+        game,
+        source,
+        options.transitionSummary,
+      )
       dispatch({
         type: 'set-game',
         game,
         now: Math.max(now, game.lastAdvancedAt),
-        ...(message === undefined
+        ...(options.message === undefined
           ? {}
-          : { notice: createNotice(message, tone) }),
-        ...(explicitReplacement
+          : {
+              notice: createNotice(
+                options.message,
+                options.tone ?? 'success',
+              ),
+            }),
+        ...(options.explicitReplacement
           ? { persistenceStatus: 'active' as const }
           : {}),
       })
-      if (saveImmediately) {
-        reportSave(game, now, explicitReplacement)
+      if (options.saveImmediately) {
+        reportSave(game, now, options.explicitReplacement)
       }
     },
-    [createNotice, reportSave],
+    [createNotice, presentTransition, reportSave],
+  )
+
+  const prepareCurrentGame = useCallback(
+    (source: GameTransitionSource = 'liveTick') => {
+      const now = Date.now()
+      const current = gameRef.current
+      if (current.lastAdvancedAt <= now) {
+        return { game: current, now }
+      }
+
+      const game = normalizeGameForNow(current, now)
+      replaceGame(game, now, source)
+      return { game, now }
+    },
+    [replaceGame],
   )
 
   const handleCommand = useCallback(
-    (result: CommandResult, successMessage: string) => {
+    (
+      result: CommandResult,
+      successMessage: string,
+      source: GameTransitionSource,
+    ) => {
       if (!result.ok) {
         dispatch({
           type: 'notify',
@@ -129,20 +180,17 @@ export function GameProvider({ children }: PropsWithChildren) {
         return
       }
 
-      replaceGame(
-        result.state,
-        result.state.lastAdvancedAt,
-        successMessage,
-        'success',
-        true,
-      )
+      replaceGame(result.state, result.state.lastAdvancedAt, source, {
+        message: successMessage,
+        saveImmediately: true,
+      })
     },
     [createNotice, replaceGame],
   )
 
   const start = useCallback(
     (heroIds: readonly string[], policy: ExpeditionPolicy) => {
-      const { game, now } = prepareCurrentGame()
+      const { game, now } = prepareCurrentGame('startCommand')
       const seed =
         (now ^ Math.imul(game.completedExpeditions + 1, 0x9e3779b9)) >>> 0
       handleCommand(
@@ -157,24 +205,27 @@ export function GameProvider({ children }: PropsWithChildren) {
           now,
         ),
         '远征队已出发',
+        'startCommand',
       )
     },
     [handleCommand, prepareCurrentGame],
   )
 
   const retreat = useCallback(() => {
-    const { game, now } = prepareCurrentGame()
+    const { game, now } = prepareCurrentGame('retreatCommand')
     handleCommand(
       retreatExpedition(game, now),
       '远征队已撤回，战利品已经入库',
+      'retreatCommand',
     )
   }, [handleCommand, prepareCurrentGame])
 
   const upgrade = useCallback(() => {
-    const { game, now } = prepareCurrentGame()
+    const { game, now } = prepareCurrentGame('upgradeCommand')
     handleCommand(
       upgradeWatchtower(game, now),
       '瞭望塔已升级',
+      'upgradeCommand',
     )
   }, [handleCommand, prepareCurrentGame])
 
@@ -215,17 +266,16 @@ export function GameProvider({ children }: PropsWithChildren) {
         return
       }
 
-      gameRef.current = result.state
-      dispatch({
-        type: 'set-game',
-        game: result.state,
-        now: Math.max(now, result.state.lastAdvancedAt),
-        notice: createNotice('存档导入成功', 'success'),
-        persistenceStatus: 'active',
+      replaceGame(result.state, now, 'importSave', {
+        message: '存档导入成功',
+        explicitReplacement: true,
+        ...(result.transitionSummary === undefined
+          ? {}
+          : { transitionSummary: result.transitionSummary }),
       })
       dispatch({ type: 'save-status', savedAt: now, message: '导入存档已保存' })
     },
-    [createNotice, prepareCurrentGame],
+    [createNotice, prepareCurrentGame, replaceGame],
   )
 
   const resetGame = useCallback(() => {
@@ -236,43 +286,38 @@ export function GameProvider({ children }: PropsWithChildren) {
     }
 
     const now = Date.now()
-    replaceGame(
-      createNewGame(now),
-      now,
-      '新游戏已创建',
-      'success',
-      true,
-      true,
-    )
+    replaceGame(createNewGame(now), now, 'resetGame', {
+      message: '新游戏已创建',
+      saveImmediately: true,
+      explicitReplacement: true,
+    })
   }, [createNotice, replaceGame])
 
   const debugAdvance = useCallback(
     (milliseconds: number) => {
-      const { game: current, now } = prepareCurrentGame()
+      const { game: current, now } = prepareCurrentGame('debugAdvance')
       const target = now + milliseconds
       const advanced = advanceTo(current, target)
       const completed =
         current.activeExpedition !== null && advanced.activeExpedition === null
-      replaceGame(
-        advanced,
-        target,
-        completed ? '远征模拟已完成' : `已推进 ${milliseconds / 1000} 秒`,
-        'info',
-        true,
-      )
+      replaceGame(advanced, target, 'debugAdvance', {
+        message: completed
+          ? '远征模拟已完成'
+          : `已推进 ${milliseconds / 1000} 秒`,
+        tone: 'info',
+        saveImmediately: true,
+      })
     },
     [prepareCurrentGame, replaceGame],
   )
 
   const debugAddWood = useCallback(() => {
-    const { game: current, now } = prepareCurrentGame()
-    replaceGame(
-      addDebugWood(current, now),
-      now,
-      '已补充 20 木材（开发调试）',
-      'info',
-      true,
-    )
+    const { game: current, now } = prepareCurrentGame('debugCommand')
+    replaceGame(addDebugWood(current, now), now, 'debugCommand', {
+      message: '已补充 20 木材（开发调试）',
+      tone: 'info',
+      saveImmediately: true,
+    })
   }, [prepareCurrentGame, replaceGame])
 
   const clearNotice = useCallback(() => {
@@ -288,35 +333,44 @@ export function GameProvider({ children }: PropsWithChildren) {
       const advanced = advanceTo(current, now)
       const completed =
         current.activeExpedition !== null && advanced.activeExpedition === null
-      gameRef.current = advanced
-      dispatch({
-        type: 'set-game',
-        game: advanced,
-        now,
+      replaceGame(advanced, now, 'liveTick', {
         ...(completed
           ? {
-              notice: createNotice(
-                '远征队已自动返程，战利品已经入库',
-                'success',
-              ),
+              message: '远征队已自动返程，战利品已经入库',
+              tone: 'success' as const,
+              saveImmediately: true,
             }
           : {}),
       })
-      if (completed) {
-        reportSave(advanced, now)
-      }
     } catch {
       dispatch({
         type: 'notify',
         notice: createNotice('远征推进失败，当前存档已保留', 'error'),
       })
     }
-  }, [createNotice, prepareCurrentGame, reportSave])
+  }, [createNotice, prepareCurrentGame, replaceGame])
 
   const runAutoSave = useCallback(() => {
     const { game, now } = prepareCurrentGame()
     reportSave(game, now)
   }, [prepareCurrentGame, reportSave])
+
+  useEffect(() => {
+    const summary = bootstrapSummaryRef.current
+    if (summary === null) {
+      return
+    }
+
+    bootstrapSummaryRef.current = null
+    presentBootstrapSummary(
+      summary,
+      `${state.game.lastAdvancedAt}:${state.game.updatedAt}`,
+    )
+    if (persistBootstrapRef.current) {
+      persistBootstrapRef.current = false
+      reportSave(state.game, state.game.lastAdvancedAt)
+    }
+  }, [presentBootstrapSummary, reportSave, state.game])
 
   useEffect(
     () =>

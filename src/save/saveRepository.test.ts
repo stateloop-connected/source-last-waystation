@@ -72,8 +72,59 @@ describe('save repository', () => {
     const loaded = repository.load(target, fallback)
 
     expect(loaded.ok).toBe(true)
+    if (!loaded.ok) {
+      throw new Error('测试存档应成功载入')
+    }
     expect(loaded.source).toBe('storage')
     expect(loaded.state.lastAdvancedAt).toBe(target)
+    expect(loaded).not.toHaveProperty('transitionSummary')
+  })
+
+  it('没有实际离线进展时不返回展示层摘要', () => {
+    const storage = new MemoryStorage()
+    const repository = createSaveRepository(storage)
+    const saved = createActiveSaveTestGame()
+    storage.setItem(
+      SAVE_STORAGE_KEY,
+      encodeSave(createSaveFile(saved, saved.updatedAt)),
+    )
+
+    const loaded = repository.load(
+      saved.lastAdvancedAt,
+      createSaveTestGame(saved.lastAdvancedAt),
+    )
+
+    expect(loaded.ok).toBe(true)
+    if (!loaded.ok) {
+      throw new Error('测试存档应成功载入')
+    }
+    expect(loaded).not.toHaveProperty('transitionSummary')
+  })
+
+  it('活跃远征离线推进后返回一份聚合元数据', () => {
+    const storage = new MemoryStorage()
+    const repository = createSaveRepository(storage)
+    const saved = createActiveSaveTestGame()
+    const target = saved.lastAdvancedAt + 60_000
+    storage.setItem(
+      SAVE_STORAGE_KEY,
+      encodeSave(createSaveFile(saved, saved.updatedAt)),
+    )
+
+    const loaded = repository.load(
+      target,
+      createSaveTestGame(target),
+    )
+
+    expect(loaded.ok).toBe(true)
+    if (!loaded.ok) {
+      throw new Error('测试存档应成功载入')
+    }
+    expect(loaded.transitionSummary).toMatchObject({
+      elapsedMs: 60_000,
+      eventCount: 4,
+      completedExpeditions: 0,
+    })
   })
 
   it('未来时钟存档归一化后仍可继续推进', () => {
@@ -313,6 +364,36 @@ describe('save repository', () => {
     expect(storage.read(SAVE_STORAGE_KEY)).toBe(previousStoredValue)
   })
 
+  it('导入活跃远征时只返回正式推进后的聚合元数据', () => {
+    const storage = new MemoryStorage()
+    const repository = createSaveRepository(storage)
+    const importedGame = createActiveSaveTestGame()
+    const target = importedGame.lastAdvancedAt + 45_000
+
+    const imported = repository.import(
+      encodeSave(createSaveFile(importedGame, importedGame.updatedAt)),
+      createSaveTestGame(target),
+      target,
+    )
+
+    expect(imported.ok).toBe(true)
+    if (!imported.ok) {
+      throw new Error('测试存档应成功导入')
+    }
+    expect(imported.state.activeExpedition?.processedEventCount).toBe(3)
+    expect(imported.transitionSummary).toMatchObject({
+      elapsedMs: 45_000,
+      eventCount: 3,
+      completedExpeditions: 0,
+    })
+    expect(
+      JSON.parse(storage.read(SAVE_STORAGE_KEY) ?? 'null'),
+    ).toMatchObject({
+      schemaVersion: 2,
+      game: { lastAdvancedAt: target },
+    })
+  })
+
   it('注入存储在变更后抛错时回滚导入写入', () => {
     const storage = new MemoryStorage()
     const repository = createSaveRepository(storage)
@@ -359,6 +440,38 @@ describe('save repository', () => {
       expect(exported.filename).toBe('last-waystation-save-2026-08-24.json')
       expect(exported.json).toContain('"schemaVersion": 2')
     }
+  })
+
+  it('导出再导入保留未知但非空的日志来源事件 ID', () => {
+    const repository = createSaveRepository(new MemoryStorage())
+    const game = createSaveTestGame()
+    const journalEntry = game.journal[0]
+    if (journalEntry === undefined) {
+      throw new Error('测试夹具缺少日志')
+    }
+    const withSource = {
+      ...game,
+      journal: [
+        { ...journalEntry, sourceEventId: 'retired-content.event' },
+        ...game.journal.slice(1),
+      ],
+    }
+
+    const exported = repository.export(withSource, withSource.updatedAt)
+    expect(exported.ok).toBe(true)
+    if (!exported.ok) {
+      return
+    }
+
+    const imported = repository.import(
+      exported.json,
+      createSaveTestGame(withSource.updatedAt),
+      withSource.updatedAt,
+    )
+    expect(imported.ok).toBe(true)
+    expect(imported.state.journal[0]?.sourceEventId).toBe(
+      'retired-content.event',
+    )
   })
 
   it('V1 导入写入 V2 且可再次作为 V2 导入', () => {

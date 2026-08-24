@@ -178,6 +178,7 @@ describe('event effects', () => {
     expect(result.journalEntries).toMatchObject([
       { category: 'event', title: '额外记录', text: '记录正文。' },
     ])
+    expect(result.journalEntries[0]).not.toHaveProperty('sourceEventId')
     expect(result.nextEventDelayAdjustmentSeconds).toBe(3)
     expect(result.requestedReturnReason).toBe('道路中断。')
   })

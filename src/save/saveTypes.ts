@@ -61,6 +61,7 @@ export type GameStateV1 = {
     id: string
     timestamp: number
     expeditionId?: string
+    sourceEventId?: string
     category:
       | 'system'
       | 'travel'

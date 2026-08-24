@@ -24,6 +24,43 @@ describe('save codec', () => {
     }
   })
 
+  it('V1 与 V2 日志兼容可选来源事件 ID 并拒绝空值或非字符串', () => {
+    const v1 = createIdleV1Save()
+    const v2 = createSaveFile(createSaveTestGame(), v1.savedAt)
+    const withSourceEventId = (
+      save: typeof v1 | typeof v2,
+      sourceEventId: unknown,
+    ): unknown => ({
+      ...save,
+      game: {
+        ...save.game,
+        journal: save.game.journal.map((entry, index) =>
+          index === 0 ? { ...entry, sourceEventId } : entry,
+        ),
+      },
+    })
+
+    for (const save of [v1, v2]) {
+      expect(decodeSave(encodeSave(save)).ok).toBe(true)
+
+      const decoded = decodeSave(
+        JSON.stringify(withSourceEventId(save, 'retired-content.event')),
+      )
+      expect(decoded.ok).toBe(true)
+      if (decoded.ok) {
+        expect(decoded.value.game.journal[0]?.sourceEventId).toBe(
+          'retired-content.event',
+        )
+      }
+
+      for (const invalid of ['', null, 7]) {
+        expect(
+          decodeSave(JSON.stringify(withSourceEventId(save, invalid))),
+        ).toMatchObject({ ok: false, code: 'invalid-structure' })
+      }
+    }
+  })
+
   it('迁移缺少首次奖励里程碑的早期 V1 存档', () => {
     const save = createIdleV1Save()
     const legacyGame: Record<string, unknown> = { ...save.game }

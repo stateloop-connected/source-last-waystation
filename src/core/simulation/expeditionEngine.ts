@@ -141,6 +141,7 @@ export function processNextExpeditionEvent(
     id: `${expedition.id}-event-${eventIndex}`,
     timestamp: eventTimestamp,
     expeditionId: expedition.id,
+    sourceEventId: selection.event.id,
     category: getJournalCategory(selection.event),
     title: selection.event.title,
     text: [selection.event.description, ...resolution.messages]

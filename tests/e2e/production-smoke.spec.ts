@@ -4,6 +4,12 @@ test('生产构建加载本地资源、可交互且不暴露开发工具', async
   const baseURL = String(testInfo.project.use.baseURL)
   const appOrigin = new URL(baseURL).origin
   const failedAssets: string[] = []
+  const remoteRequests: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).origin !== appOrigin) {
+      remoteRequests.push(request.url())
+    }
+  })
   page.on('response', (response) => {
     const resourceType = response.request().resourceType()
     const isStaticAsset = ['script', 'stylesheet', 'image', 'font'].includes(resourceType)
@@ -66,4 +72,5 @@ test('生产构建加载本地资源、可交互且不暴露开发工具', async
   expect(resetDialogType).toBe('confirm')
   await expect(page.getByRole('region', { name: '黑杉林小队' })).toBeVisible()
   expect(failedAssets, '生产构建的同源 JS、CSS、图片和字体不应加载失败').toEqual([])
+  expect(remoteRequests, '生产构建不应请求远程运行时资源').toEqual([])
 })
