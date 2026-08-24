@@ -38,8 +38,14 @@ jobs:
       - name: Type-check
         run: npm run typecheck
 
+      - name: Validate game content
+        run: npm run validate:content
+
       - name: Run unit tests
         run: npm run test:run
+
+      - name: Check deterministic balance simulation
+        run: npm run simulate:balance:check
 
       - name: Build production bundle
         run: npm run build
