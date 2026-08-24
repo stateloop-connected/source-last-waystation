@@ -1,7 +1,7 @@
 import type { GameState } from '../core/model/gameState'
 import { advanceTo } from '../core/simulation/advanceTo'
 import { createSaveFile, decodeSave, encodeSave } from './saveCodec'
-import { isSaveFileV1 } from './migrations'
+import { isGameState, isSaveFileV2 } from './migrations'
 import { normalizeSaveForNow } from './saveNormalization'
 import {
   SAVE_STORAGE_KEY,
@@ -24,6 +24,7 @@ export type SaveLoadResult =
       ok: true
       state: GameState
       source: 'storage' | 'fallback'
+      migration?: 'v1-persisted' | 'v1-write-failed'
     }
   | (SaveFailure & {
       state: GameState
@@ -111,28 +112,49 @@ function restoreStoredValue(
   }
 }
 
+function writeStoredValue(
+  storage: SaveStorage,
+  key: string,
+  value: string,
+  previousValue: string | null,
+): boolean {
+  try {
+    storage.setItem(key, value)
+    return true
+  } catch {
+    restoreStoredValue(storage, key, previousValue)
+    return false
+  }
+}
+
 export function createSaveRepository(
   storage: SaveStorage = browserStorage(),
   key = SAVE_STORAGE_KEY,
 ): SaveRepository {
   const save = (game: GameState, savedAt: number): SaveWriteResult => {
     const saveFile = createSaveFile(game, savedAt)
-    if (!isSaveFileV1(saveFile)) {
+    if (!isSaveFileV2(saveFile)) {
       return failure(
         'invalid-structure',
         '当前游戏状态无效，无法保存。',
       )
     }
 
+    let previousValue: string | null
     try {
-      storage.setItem(key, encodeSave(saveFile))
-      return { ok: true, savedAt }
+      previousValue = storage.getItem(key)
     } catch {
+      return failure('storage-read-failed', '读取当前存档失败，保存已取消。')
+    }
+
+    if (!writeStoredValue(storage, key, encodeSave(saveFile), previousValue)) {
       return failure(
         'storage-write-failed',
         '保存存档失败，浏览器可能已禁用本地存储。',
       )
     }
+
+    return { ok: true, savedAt }
   }
 
   const load = (now: number, fallback: GameState): SaveLoadResult => {
@@ -162,10 +184,40 @@ export function createSaveRepository(
     }
 
     try {
-      const normalized = normalizeSaveForNow(decoded.value, now)
+      const normalized = normalizeSaveForNow(
+        decoded.value,
+        now,
+        decoded.sourceSchemaVersion === 1
+          ? 'legacy-region-default'
+          : 'preserve',
+      )
+      const state = advanceTo(normalized.game, now)
+      if (!isGameState(state)) {
+        throw new Error('存档推进后状态无效。')
+      }
+      if (decoded.sourceSchemaVersion === 1) {
+        const migratedSave = createSaveFile(state, state.lastAdvancedAt)
+        if (!isSaveFileV2(migratedSave)) {
+          throw new Error('迁移后的存档状态无效。')
+        }
+        const persisted = writeStoredValue(
+          storage,
+          key,
+          encodeSave(migratedSave),
+          json,
+        )
+
+        return {
+          ok: true,
+          state,
+          source: 'storage',
+          migration: persisted ? 'v1-persisted' : 'v1-write-failed',
+        }
+      }
+
       return {
         ok: true,
-        state: advanceTo(normalized.game, now),
+        state,
         source: 'storage',
       }
     } catch {
@@ -192,7 +244,13 @@ export function createSaveRepository(
 
     let imported: GameState
     try {
-      const normalized = normalizeSaveForNow(decoded.value, now)
+      const normalized = normalizeSaveForNow(
+        decoded.value,
+        now,
+        decoded.sourceSchemaVersion === 1
+          ? 'legacy-region-default'
+          : 'preserve',
+      )
       imported = advanceTo(normalized.game, now)
     } catch {
       return {
@@ -205,7 +263,7 @@ export function createSaveRepository(
     }
 
     const importedSave = createSaveFile(imported, now)
-    if (!isSaveFileV1(importedSave)) {
+    if (!isSaveFileV2(importedSave)) {
       return {
         ...failure('invalid-structure', '导入后的游戏状态无效。'),
         state: current,
@@ -225,10 +283,14 @@ export function createSaveRepository(
       }
     }
 
-    try {
-      storage.setItem(key, encodeSave(importedSave))
-    } catch {
-      restoreStoredValue(storage, key, previousValue)
+    if (
+      !writeStoredValue(
+        storage,
+        key,
+        encodeSave(importedSave),
+        previousValue,
+      )
+    ) {
       return {
         ...failure(
           'storage-write-failed',
@@ -246,7 +308,7 @@ export function createSaveRepository(
     savedAt: number,
   ): SaveExportResult => {
     const saveFile = createSaveFile(game, savedAt)
-    if (!isSaveFileV1(saveFile)) {
+    if (!isSaveFileV2(saveFile)) {
       return failure(
         'invalid-structure',
         '当前游戏状态无效，无法导出。',

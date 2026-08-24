@@ -1,5 +1,6 @@
 import type { GameState } from '../model/gameState'
 import type { JournalEntry } from '../model/journal'
+import { addNonNegativeSafeIntegers } from '../safeInteger'
 
 export const MAX_JOURNAL_ENTRIES = 200
 
@@ -55,7 +56,10 @@ export function settleExpedition(
     : 0
   const settledLoot = {
     ...expedition.carriedLoot,
-    wood: expedition.carriedLoot.wood + firstSupplyWood,
+    wood: addNonNegativeSafeIntegers(
+      expedition.carriedLoot.wood,
+      firstSupplyWood,
+    ),
   }
   const returnCopy = getReturnCopy(reason)
   const returnEntry: JournalEntry = {
@@ -94,10 +98,22 @@ export function settleExpedition(
     ...state,
     updatedAt: Math.max(state.updatedAt, timestamp),
     resources: {
-      food: state.resources.food + settledLoot.food,
-      medicine: state.resources.medicine + settledLoot.medicine,
-      wood: state.resources.wood + settledLoot.wood,
-      coins: state.resources.coins + settledLoot.coins,
+      food: addNonNegativeSafeIntegers(
+        state.resources.food,
+        settledLoot.food,
+      ),
+      medicine: addNonNegativeSafeIntegers(
+        state.resources.medicine,
+        settledLoot.medicine,
+      ),
+      wood: addNonNegativeSafeIntegers(
+        state.resources.wood,
+        settledLoot.wood,
+      ),
+      coins: addNonNegativeSafeIntegers(
+        state.resources.coins,
+        settledLoot.coins,
+      ),
     },
     heroes: state.heroes.map((hero) =>
       expedition.partyHeroIds.includes(hero.id)
@@ -105,7 +121,10 @@ export function settleExpedition(
         : hero,
     ),
     activeExpedition: null,
-    completedExpeditions: state.completedExpeditions + 1,
+    completedExpeditions: addNonNegativeSafeIntegers(
+      state.completedExpeditions,
+      1,
+    ),
     hasClaimedFirstExpeditionReward:
       state.hasClaimedFirstExpeditionReward || grantsFirstSupply,
     journal: appendJournal(

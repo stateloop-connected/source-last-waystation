@@ -335,7 +335,11 @@ describe('upgradeWatchtower', () => {
     const state = createNewGame(NOW)
     const poor = upgradeWatchtower(state, NOW)
     const maxed = upgradeWatchtower(
-      { ...state, station: { watchtowerLevel: 3 }, resources: { ...state.resources, wood: 100 } },
+      {
+        ...state,
+        station: { ...state.station, watchtowerLevel: 3 },
+        resources: { ...state.resources, wood: 100 },
+      },
       NOW,
     )
 

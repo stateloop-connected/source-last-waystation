@@ -1,6 +1,12 @@
 import type { ExpeditionPolicy } from '../model/expedition'
 import type { ResourceType } from '../model/gameState'
 import type { HeroRole } from '../model/hero'
+import type { JournalCategory } from '../model/journal'
+
+export type NumericRange = {
+  min: number
+  max: number
+}
 
 export type HeroDefinition = {
   id: string
@@ -11,44 +17,112 @@ export type HeroDefinition = {
   power: number
   insight: number
   survival: number
+  traitIds: readonly string[]
 }
 
-export type AdventureEventTag = 'travel' | 'discovery' | 'danger'
-
-export type GainLootEffect = {
-  type: 'gainLoot'
-  resource: ResourceType
-  min: number
-  max: number
+export type TraitDefinition = {
+  id: string
+  name: string
+  description: string
 }
 
-export type DamageRandomHeroEffect = {
-  type: 'damageRandomHero'
-  min: number
-  max: number
+export const EVENT_TAGS = [
+  'safe',
+  'reward',
+  'danger',
+  'combat',
+  'discovery',
+  'recovery',
+] as const
+
+export type EventTag = (typeof EVENT_TAGS)[number]
+export type AdventureEventTag = EventTag
+export type LootResourceKey = ResourceType
+
+export type EventCondition =
+  | { type: 'regionIs'; regionId: string }
+  | { type: 'policyIs'; policy: ExpeditionPolicy }
+  | { type: 'partyHasRole'; role: HeroRole; minimum?: number }
+  | { type: 'partyHasHero'; heroId: string }
+  | { type: 'partyHasTrait'; traitId: string }
+  | { type: 'minimumPartyHealthRatioAtMost'; ratio: number }
+  | { type: 'minimumPartyHealthRatioAtLeast'; ratio: number }
+  | { type: 'eventIndexBetween'; minimum?: number; maximum?: number }
+  | { type: 'lootAtLeast'; resource: LootResourceKey; amount: number }
+  | { type: 'expeditionFlagPresent'; flag: string }
+  | { type: 'expeditionFlagAbsent'; flag: string }
+
+export type EventPolicyModifier = {
+  weightMultiplier?: number
+  rewardMultiplier?: number
+  damageMultiplier?: number
 }
 
-export type AbilityCheckEffect = {
-  type: 'abilityCheck'
-  ability: 'power' | 'insight' | 'survival'
-  difficulty: number
-  successEffects: readonly AdventureEventEffect[]
-  failureEffects: readonly AdventureEventEffect[]
-}
+export type HeroTarget =
+  | 'randomPartyMember'
+  | 'lowestHealth'
+  | 'highestHealth'
+  | 'lowestPower'
+  | 'highestPower'
 
-export type AdventureEventEffect =
-  | GainLootEffect
-  | DamageRandomHeroEffect
-  | AbilityCheckEffect
+export type EventEffect =
+  | {
+      type: 'gainLoot'
+      resource: LootResourceKey
+      amount: NumericRange
+    }
+  | {
+      type: 'loseLoot'
+      resource: LootResourceKey
+      amount: NumericRange
+    }
+  | {
+      type: 'damageHero'
+      target: HeroTarget
+      amount: NumericRange
+      minimumHealth?: number
+    }
+  | {
+      type: 'healHero'
+      target: HeroTarget
+      amount: NumericRange
+    }
+  | {
+      type: 'appendJournal'
+      category: JournalCategory
+      title: string
+      text: string
+    }
+  | { type: 'setExpeditionFlag'; flag: string }
+  | { type: 'clearExpeditionFlag'; flag: string }
+  | { type: 'adjustNextEventDelay'; seconds: number }
+  | { type: 'requestReturn'; reason: string }
+
+export type AdventureEventEffect = EventEffect
+
+export type EventResolution =
+  | { type: 'effects'; effects: readonly EventEffect[] }
+  | {
+      type: 'partyCheck'
+      stat: 'power' | 'insight' | 'survival'
+      difficulty: number
+      randomBonus: NumericRange
+      successEffects: readonly EventEffect[]
+      failureEffects: readonly EventEffect[]
+    }
 
 export type AdventureEventDefinition = {
   id: string
   title: string
-  text: string
-  weight: number
-  tag: AdventureEventTag
-  allowedPolicies?: readonly ExpeditionPolicy[]
-  effects: readonly AdventureEventEffect[]
+  description?: string
+  regionIds: readonly string[]
+  tags: readonly EventTag[]
+  baseWeight: number
+  conditions?: readonly EventCondition[]
+  policyModifiers?: Partial<
+    Readonly<Record<ExpeditionPolicy, EventPolicyModifier>>
+  >
+  resolution: EventResolution
 }
 
 export type RegionDefinition = {
@@ -71,7 +145,9 @@ export type ExpeditionPolicyDefinition = {
   id: ExpeditionPolicy
   name: string
   description: string
-  eventWeightMultipliers: Readonly<Record<AdventureEventTag, number>>
+  eventWeightMultipliers: Readonly<
+    Record<'travel' | 'discovery' | 'danger', number>
+  >
   rewardMultiplier: number
   damageMultiplier: number
   healthReturnThreshold: number | null
@@ -79,6 +155,7 @@ export type ExpeditionPolicyDefinition = {
 
 export type ContentCatalog = {
   heroes: readonly HeroDefinition[]
+  traits: readonly TraitDefinition[]
   regions: readonly RegionDefinition[]
   events: readonly AdventureEventDefinition[]
   buildings: readonly BuildingDefinition[]

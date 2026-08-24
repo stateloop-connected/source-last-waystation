@@ -15,6 +15,7 @@ export type ResourceType = keyof Resources
 
 export type StationState = {
   watchtowerLevel: number
+  infirmaryLevel: number
 }
 
 export type GameState = {
@@ -23,6 +24,7 @@ export type GameState = {
   updatedAt: number
   lastAdvancedAt: number
   resources: Resources
+  unlockedRegionIds: string[]
   heroes: HeroState[]
   station: StationState
   activeExpedition: ExpeditionState | null

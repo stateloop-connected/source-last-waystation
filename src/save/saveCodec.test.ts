@@ -8,6 +8,7 @@ import {
   createActiveSaveTestGame,
   createSaveTestGame,
 } from './saveTestFixture'
+import { createIdleV1Save } from './saveV1TestFixture'
 
 describe('save codec', () => {
   it('编码后可以无损解码游戏状态', () => {
@@ -24,14 +25,14 @@ describe('save codec', () => {
   })
 
   it('迁移缺少首次奖励里程碑的早期 V1 存档', () => {
-    const game = createSaveTestGame()
-    const legacyGame: Record<string, unknown> = { ...game }
+    const save = createIdleV1Save()
+    const legacyGame: Record<string, unknown> = { ...save.game }
     delete legacyGame.hasClaimedFirstExpeditionReward
 
     const decoded = decodeSave(
       JSON.stringify({
         schemaVersion: 1,
-        savedAt: game.updatedAt,
+        savedAt: save.savedAt,
         game: legacyGame,
       }),
     )
@@ -167,7 +168,7 @@ describe('save codec', () => {
     ).toBe(false)
   })
 
-  it('拒绝会让 V1 游戏永久卡住的语义状态', () => {
+  it('拒绝会让 V2 游戏永久卡住的语义状态', () => {
     const game = createActiveSaveTestGame()
     const expedition = game.activeExpedition
     const firstHero = game.heroes[0]
@@ -212,7 +213,7 @@ describe('save codec', () => {
       createSaveFile(
         {
           ...game,
-          station: { watchtowerLevel: 99 },
+          station: { ...game.station, watchtowerLevel: 99 },
         },
         game.updatedAt,
       ),

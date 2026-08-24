@@ -14,6 +14,10 @@ test-results/
 blob-report/
 .playwright/
 
+# Generated balance simulation reports
+artifacts/balance/
+artifacts/balance-*/
+
 # Logs
 *.log
 npm-debug.log*

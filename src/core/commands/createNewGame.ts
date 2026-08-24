@@ -15,13 +15,16 @@ export function createNewGame(now: number): GameState {
       wood: 0,
       coins: 20,
     },
+    unlockedRegionIds: ['black-fir-forest'],
     heroes: HERO_DEFINITIONS.map((hero) => ({
       ...hero,
+      traitIds: [...hero.traitIds],
       health: hero.maxHealth,
       status: 'idle',
     })),
     station: {
       watchtowerLevel: 0,
+      infirmaryLevel: 0,
     },
     activeExpedition: null,
     completedExpeditions: 0,

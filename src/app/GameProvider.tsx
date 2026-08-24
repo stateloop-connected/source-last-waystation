@@ -27,6 +27,8 @@ import {
   type NoticeTone,
 } from './gameContext'
 import { gameReducer, type GameAppState } from './gameReducer'
+import { createInitialGameAppState } from './initialGameState'
+import { canWriteSave } from './savePersistence'
 
 const repository = createSaveRepository()
 const AUTO_SAVE_INTERVAL_MS = 5_000
@@ -36,28 +38,7 @@ const NOTICE_DURATION_MS = 4_000
 function initialState(): GameAppState {
   const now = Date.now()
   const fallback = createNewGame(now)
-  const loaded = repository.load(now, fallback)
-
-  if (!loaded.ok) {
-    return {
-      game: loaded.state,
-      now,
-      lastSavedAt: null,
-      saveMessage: '损坏存档已隔离',
-      notice: { id: now, message: loaded.error, tone: 'error' },
-    }
-  }
-
-  return {
-    game: loaded.state,
-    now: Math.max(now, loaded.state.lastAdvancedAt),
-    lastSavedAt: loaded.source === 'storage' ? now : null,
-    saveMessage: loaded.source === 'storage' ? '存档已载入' : '新旅程待保存',
-    notice:
-      loaded.source === 'storage'
-        ? { id: now, message: '存档已载入，离线进度已结算', tone: 'info' }
-        : null,
-  }
+  return createInitialGameAppState(now, repository.load(now, fallback))
 }
 
 export function GameProvider({ children }: PropsWithChildren) {
@@ -87,17 +68,28 @@ export function GameProvider({ children }: PropsWithChildren) {
     return { game, now }
   }, [])
 
-  const reportSave = useCallback((game: GameState, savedAt: number): boolean => {
-    const result = repository.save(game, savedAt)
-    if (result.ok) {
-      dispatch({ type: 'save-status', savedAt, message: '存档已保存' })
-      return true
-    }
+  const reportSave = useCallback(
+    (
+      game: GameState,
+      savedAt: number,
+      explicitReplacement = false,
+    ): boolean => {
+      if (!canWriteSave(state.persistenceStatus, explicitReplacement)) {
+        return false
+      }
 
-    dispatch({ type: 'save-status', savedAt: null, message: '本地保存失败' })
-    dispatch({ type: 'notify', notice: createNotice(result.error, 'error') })
-    return false
-  }, [createNotice])
+      const result = repository.save(game, savedAt)
+      if (result.ok) {
+        dispatch({ type: 'save-status', savedAt, message: '存档已保存' })
+        return true
+      }
+
+      dispatch({ type: 'save-status', savedAt: null, message: '本地保存失败' })
+      dispatch({ type: 'notify', notice: createNotice(result.error, 'error') })
+      return false
+    },
+    [createNotice, state.persistenceStatus],
+  )
 
   const replaceGame = useCallback(
     (
@@ -106,6 +98,7 @@ export function GameProvider({ children }: PropsWithChildren) {
       message?: string,
       tone: NoticeTone = 'success',
       saveImmediately = false,
+      explicitReplacement = false,
     ) => {
       gameRef.current = game
       dispatch({
@@ -115,9 +108,12 @@ export function GameProvider({ children }: PropsWithChildren) {
         ...(message === undefined
           ? {}
           : { notice: createNotice(message, tone) }),
+        ...(explicitReplacement
+          ? { persistenceStatus: 'active' as const }
+          : {}),
       })
       if (saveImmediately) {
-        reportSave(game, now)
+        reportSave(game, now, explicitReplacement)
       }
     },
     [createNotice, reportSave],
@@ -225,6 +221,7 @@ export function GameProvider({ children }: PropsWithChildren) {
         game: result.state,
         now: Math.max(now, result.state.lastAdvancedAt),
         notice: createNotice('存档导入成功', 'success'),
+        persistenceStatus: 'active',
       })
       dispatch({ type: 'save-status', savedAt: now, message: '导入存档已保存' })
     },
@@ -239,7 +236,14 @@ export function GameProvider({ children }: PropsWithChildren) {
     }
 
     const now = Date.now()
-    replaceGame(createNewGame(now), now, '新游戏已创建', 'success', true)
+    replaceGame(
+      createNewGame(now),
+      now,
+      '新游戏已创建',
+      'success',
+      true,
+      true,
+    )
   }, [createNotice, replaceGame])
 
   const debugAdvance = useCallback(

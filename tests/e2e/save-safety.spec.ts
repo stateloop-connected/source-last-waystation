@@ -1,5 +1,7 @@
 import { test, expect, openFreshGame, readResource } from './testHarness.js'
 
+const SAVE_STORAGE_KEY = 'last-waystation.save.v1'
+
 test.beforeEach(async ({ page }) => {
   await openFreshGame(page)
 })
@@ -65,4 +67,33 @@ test('导出导入、损坏文件和重置确认均保护当前存档', async ({
   await expect(page.getByText('新游戏已创建', { exact: true })).toBeVisible()
   expect(await readResource(page, '木材')).toBe(0)
   await expect(page.getByLabel('瞭望塔等级 0 / 3')).toBeVisible()
+
+  const quarantinedText = '{"schemaVersion":1,"broken":true}'
+  await page.evaluate(
+    ([key, value]) => window.localStorage.setItem(key, value),
+    [SAVE_STORAGE_KEY, quarantinedText],
+  )
+  await page.reload()
+  await expect(
+    page.getByText('存档内容结构无效或缺少关键字段。', { exact: true }),
+  ).toBeVisible()
+
+  await page.waitForTimeout(5_500)
+  await page.getByRole('button', { name: '补充 20 木材' }).click()
+  const storedAfterAutoSave = await page.evaluate(
+    (key) => window.localStorage.getItem(key),
+    SAVE_STORAGE_KEY,
+  )
+  expect(storedAfterAutoSave).toBe(quarantinedText)
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: '重置' }).click()
+  await expect(page.getByText('新游戏已创建', { exact: true })).toBeVisible()
+  const storedAfterReset = await page.evaluate(
+    (key) => window.localStorage.getItem(key),
+    SAVE_STORAGE_KEY,
+  )
+  expect(JSON.parse(storedAfterReset ?? 'null')).toMatchObject({
+    schemaVersion: 2,
+  })
 })

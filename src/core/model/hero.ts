@@ -10,6 +10,7 @@ export type HeroState = {
   id: string
   name: string
   role: HeroRole
+  traitIds: string[]
   level: number
   maxHealth: number
   health: number
