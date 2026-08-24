@@ -2,10 +2,15 @@ import { getRegionDefinition } from '../core/content/regions'
 import type { GameState } from '../core/model/gameState'
 import {
   MAX_SAVE_TIMESTAMP,
-  type SaveFileV1,
+  SAVE_SCHEMA_VERSION,
+  type SaveFileV2,
 } from './saveTypes'
 
-function normalizeReferenceTime(now: number, save: SaveFileV1): number {
+export type EventDelayNormalizationMode =
+  | 'preserve'
+  | 'legacy-region-default'
+
+function normalizeReferenceTime(now: number, save: SaveFileV2): number {
   if (!Number.isFinite(now)) {
     return Math.min(save.savedAt, save.game.lastAdvancedAt)
   }
@@ -23,6 +28,7 @@ function shiftAndClamp(
 function normalizeExpeditionTimeline(
   game: GameState,
   clockSkew: number,
+  eventDelayMode: EventDelayNormalizationMode,
 ): GameState['activeExpedition'] {
   const expedition = game.activeExpedition
   if (expedition === null) {
@@ -42,11 +48,15 @@ function normalizeExpeditionTimeline(
     ),
   )
   const region = getRegionDefinition(expedition.regionId)
-  const savedInterval = Math.max(
-    1,
-    expedition.nextEventAt - expedition.lastProcessedAt,
-  )
-  const eventInterval = region?.eventIntervalMs ?? savedInterval
+  const savedInterval = expedition.nextEventAt - expedition.lastProcessedAt
+  const hasValidSavedInterval =
+    Number.isSafeInteger(savedInterval) && savedInterval >= 0
+  const fallbackInterval =
+    region?.eventIntervalMs ?? (hasValidSavedInterval ? savedInterval : 1)
+  const eventInterval =
+    eventDelayMode === 'preserve' && hasValidSavedInterval
+      ? savedInterval
+      : fallbackInterval
   const nextEventAt = Math.min(
     MAX_SAVE_TIMESTAMP,
     lastProcessedAt + eventInterval,
@@ -63,9 +73,10 @@ function normalizeExpeditionTimeline(
 // A system clock can move backwards between save and load. Shift the complete
 // game timeline together so relative expedition timing remains deterministic.
 export function normalizeSaveForNow(
-  save: SaveFileV1,
+  save: SaveFileV2,
   now: number,
-): SaveFileV1 {
+  eventDelayMode: EventDelayNormalizationMode = 'preserve',
+): SaveFileV2 {
   const referenceTime = normalizeReferenceTime(now, save)
   const clockSkew = Math.max(0, save.game.lastAdvancedAt - referenceTime)
   const lastAdvancedAt = shiftAndClamp(
@@ -101,6 +112,7 @@ export function normalizeSaveForNow(
     activeExpedition: normalizeExpeditionTimeline(
       timelineGame,
       clockSkew,
+      eventDelayMode,
     ),
   }
 
@@ -120,7 +132,7 @@ export function normalizeGameForNow(
 ): GameState {
   return normalizeSaveForNow(
     {
-      schemaVersion: 1,
+      schemaVersion: SAVE_SCHEMA_VERSION,
       savedAt: game.updatedAt,
       game,
     },

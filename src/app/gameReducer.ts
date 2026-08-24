@@ -7,6 +7,7 @@ export type GameAppState = {
   lastSavedAt: number | null
   saveMessage: string
   notice: GameNotice | null
+  persistenceStatus: 'active' | 'quarantined'
 }
 
 export type GameAppAction =
@@ -15,6 +16,7 @@ export type GameAppAction =
       game: GameState
       now: number
       notice?: GameNotice
+      persistenceStatus?: GameAppState['persistenceStatus']
     }
   | { type: 'save-status'; savedAt: number | null; message: string }
   | { type: 'notify'; notice: GameNotice }
@@ -31,6 +33,9 @@ export function gameReducer(
         game: action.game,
         now: action.now,
         ...(action.notice === undefined ? {} : { notice: action.notice }),
+        ...(action.persistenceStatus === undefined
+          ? {}
+          : { persistenceStatus: action.persistenceStatus }),
       }
     case 'save-status':
       return {

@@ -105,6 +105,7 @@ export function startExpedition(
           food: 0,
           medicine: 0,
         },
+        eventFlags: [],
         status: 'active',
       },
       journal: appendJournal(currentState.journal, departureEntry),

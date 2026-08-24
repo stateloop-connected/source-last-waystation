@@ -13,11 +13,13 @@ export function createSaveTestGame(now = 1_700_000_000_000): GameState {
       wood: 0,
       coins: 20,
     },
+    unlockedRegionIds: ['black-fir-forest'],
     heroes: [
       {
         id: 'ron',
         name: '罗敦',
         role: 'vanguard',
+        traitIds: ['ronn.guardian'],
         level: 1,
         maxHealth: 12,
         health: 12,
@@ -30,6 +32,7 @@ export function createSaveTestGame(now = 1_700_000_000_000): GameState {
         id: 'eve',
         name: '艾琳',
         role: 'scout',
+        traitIds: ['eve.pathfinder'],
         level: 1,
         maxHealth: 9,
         health: 9,
@@ -42,6 +45,7 @@ export function createSaveTestGame(now = 1_700_000_000_000): GameState {
         id: 'mia',
         name: '米娅',
         role: 'medic',
+        traitIds: ['mia.field-medic'],
         level: 1,
         maxHealth: 10,
         health: 10,
@@ -53,6 +57,7 @@ export function createSaveTestGame(now = 1_700_000_000_000): GameState {
     ],
     station: {
       watchtowerLevel: 0,
+      infirmaryLevel: 0,
     },
     activeExpedition: null,
     completedExpeditions: 0,

@@ -10,6 +10,7 @@ export const HERO_DEFINITIONS = [
     power: 9,
     insight: 4,
     survival: 5,
+    traitIds: ['ronn.guardian'],
   },
   {
     id: 'eve',
@@ -20,6 +21,7 @@ export const HERO_DEFINITIONS = [
     power: 4,
     insight: 9,
     survival: 8,
+    traitIds: ['eve.pathfinder'],
   },
   {
     id: 'mia',
@@ -30,6 +32,7 @@ export const HERO_DEFINITIONS = [
     power: 3,
     insight: 7,
     survival: 9,
+    traitIds: ['mia.field-medic'],
   },
 ] as const satisfies readonly HeroDefinition[]
 

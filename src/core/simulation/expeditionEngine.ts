@@ -1,169 +1,49 @@
 import { getAdventureEvent } from '../content/events'
+import { INVALID_EXPEDITION_CONFIGURATION_TITLE } from '../content/contentDiagnostics'
 import { getPolicyDefinition } from '../content/policies'
 import { getRegionDefinition } from '../content/regions'
-import type {
-  AdventureEventDefinition,
-  AdventureEventEffect,
-  ExpeditionPolicyDefinition,
-} from '../content/contentTypes'
-import type { ExpeditionLoot } from '../model/expedition'
+import type { AdventureEventDefinition } from '../content/contentTypes'
+import {
+  getEventPolicyModifier,
+} from '../events/calculateEventWeight'
+import type { EventConditionContext } from '../events/evaluateEventConditions'
+import { resolveAdventureEvent } from '../events/resolveAdventureEvent'
+import { selectAdventureEvent } from '../events/selectAdventureEvent'
 import type { GameState } from '../model/gameState'
 import type { HeroState } from '../model/hero'
 import type { JournalCategory, JournalEntry } from '../model/journal'
-import { randomInt, weightedChoice } from '../rng/seededRng'
 import { appendJournal, settleExpedition } from './rewards'
 
-type EffectResolution = {
-  heroes: HeroState[]
-  loot: ExpeditionLoot
-  rngState: number
-  messages: string[]
-  usedAbilityCheck: boolean
+function getRegionEvents(regionEventIds: readonly string[]): AdventureEventDefinition[] {
+  return regionEventIds
+    .map((eventId) => getAdventureEvent(eventId))
+    .filter((event) => event !== undefined)
 }
 
-const RESOURCE_NAMES: Readonly<Record<keyof ExpeditionLoot, string>> = {
-  wood: '木材',
-  coins: '金币',
-  food: '食物',
-  medicine: '药品',
+function getParty(
+  heroes: readonly HeroState[],
+  partyHeroIds: readonly string[],
+): HeroState[] {
+  return heroes.filter((hero) => partyHeroIds.includes(hero.id))
 }
 
-function getAvailableEvents(
+function getConditionContext(
   state: GameState,
-): AdventureEventDefinition[] {
+  eventIndex: number,
+): EventConditionContext | null {
   const expedition = state.activeExpedition
   if (expedition === null) {
-    return []
+    return null
   }
 
-  const region = getRegionDefinition(expedition.regionId)
-  if (region === undefined) {
-    return []
+  return {
+    regionId: expedition.regionId,
+    policy: expedition.policy,
+    party: getParty(state.heroes, expedition.partyHeroIds),
+    eventIndex,
+    loot: expedition.carriedLoot,
+    eventFlags: expedition.eventFlags,
   }
-
-  const events: AdventureEventDefinition[] = []
-  for (const eventId of region.eventIds) {
-    const event = getAdventureEvent(eventId)
-    if (
-      event !== undefined &&
-      (event.allowedPolicies === undefined ||
-        event.allowedPolicies.includes(expedition.policy))
-    ) {
-      events.push(event)
-    }
-  }
-  return events
-}
-
-function resolveEffects(
-  effects: readonly AdventureEventEffect[],
-  partyHeroIds: readonly string[],
-  policy: ExpeditionPolicyDefinition,
-  initial: EffectResolution,
-): EffectResolution {
-  let resolution = initial
-
-  for (const effect of effects) {
-    switch (effect.type) {
-      case 'gainLoot': {
-        const rolledAmount = randomInt(
-          resolution.rngState,
-          effect.min,
-          effect.max,
-        )
-        const amount = Math.max(
-          0,
-          Math.round(rolledAmount.value * policy.rewardMultiplier),
-        )
-        resolution = {
-          ...resolution,
-          loot: {
-            ...resolution.loot,
-            [effect.resource]: resolution.loot[effect.resource] + amount,
-          },
-          rngState: rolledAmount.nextState,
-          messages: [
-            ...resolution.messages,
-            `获得 ${amount} 份${RESOURCE_NAMES[effect.resource]}。`,
-          ],
-        }
-        break
-      }
-      case 'damageRandomHero': {
-        const party = resolution.heroes.filter((hero) =>
-          partyHeroIds.includes(hero.id),
-        )
-        if (party.length === 0) {
-          resolution = {
-            ...resolution,
-            messages: [...resolution.messages, '队伍成员数据缺失，未结算伤害。'],
-          }
-          break
-        }
-
-        const targetRoll = randomInt(
-          resolution.rngState,
-          0,
-          party.length - 1,
-        )
-        const target = party[targetRoll.value]
-        if (target === undefined) {
-          break
-        }
-        const damageRoll = randomInt(
-          targetRoll.nextState,
-          effect.min,
-          effect.max,
-        )
-        const intendedDamage = Math.max(
-          1,
-          Math.round(damageRoll.value * policy.damageMultiplier),
-        )
-        const nextHealth = Math.max(1, target.health - intendedDamage)
-        const damageTaken = target.health - nextHealth
-        resolution = {
-          ...resolution,
-          heroes: resolution.heroes.map((hero) =>
-            hero.id === target.id ? { ...hero, health: nextHealth } : hero,
-          ),
-          rngState: damageRoll.nextState,
-          messages: [
-            ...resolution.messages,
-            `${target.name} 失去 ${damageTaken} 点生命，当前生命 ${nextHealth}/${target.maxHealth}。`,
-          ],
-        }
-        break
-      }
-      case 'abilityCheck': {
-        const modifierRoll = randomInt(resolution.rngState, -3, 3)
-        const partyScore = resolution.heroes
-          .filter((hero) => partyHeroIds.includes(hero.id))
-          .reduce((sum, hero) => sum + hero[effect.ability], 0)
-        const total = partyScore + modifierRoll.value
-        const succeeded = total >= effect.difficulty
-        const checked: EffectResolution = {
-          ...resolution,
-          rngState: modifierRoll.nextState,
-          messages: [
-            ...resolution.messages,
-            succeeded
-              ? `能力检定成功（${total}/${effect.difficulty}）。`
-              : `能力检定失败（${total}/${effect.difficulty}）。`,
-          ],
-          usedAbilityCheck: true,
-        }
-        resolution = resolveEffects(
-          succeeded ? effect.successEffects : effect.failureEffects,
-          partyHeroIds,
-          policy,
-          checked,
-        )
-        break
-      }
-    }
-  }
-
-  return resolution
 }
 
 function shouldCautiousPartyReturn(
@@ -184,12 +64,36 @@ function shouldCautiousPartyReturn(
 
 function getJournalCategory(
   event: AdventureEventDefinition,
-  usedAbilityCheck: boolean,
 ): JournalCategory {
-  if (usedAbilityCheck) {
+  if (event.tags.includes('combat')) {
     return 'combat'
   }
-  return event.tag === 'travel' ? 'travel' : 'event'
+  return event.tags.includes('safe') ? 'travel' : 'event'
+}
+
+function settleInvalidConfiguration(
+  state: GameState,
+  eventTimestamp: number,
+  detail: string,
+): GameState {
+  const expedition = state.activeExpedition
+  if (expedition === null) {
+    return state
+  }
+
+  const warning: JournalEntry = {
+    id: `${expedition.id}-event-${expedition.processedEventCount + 1}`,
+    timestamp: eventTimestamp,
+    expeditionId: expedition.id,
+    category: 'warning',
+    title: INVALID_EXPEDITION_CONFIGURATION_TITLE,
+    text: `无法找到可处理的事件，队伍已安全返程。${detail}`,
+  }
+  return settleExpedition(
+    { ...state, journal: appendJournal(state.journal, warning) },
+    eventTimestamp,
+    'completed',
+  )
 }
 
 export function processNextExpeditionEvent(
@@ -203,71 +107,73 @@ export function processNextExpeditionEvent(
 
   const policy = getPolicyDefinition(expedition.policy)
   const region = getRegionDefinition(expedition.regionId)
-  const availableEvents = getAvailableEvents(state)
-  if (
-    policy === undefined ||
-    region === undefined ||
-    availableEvents.length === 0
-  ) {
-    const warning: JournalEntry = {
-      id: `${expedition.id}-event-${expedition.processedEventCount + 1}`,
-      timestamp: eventTimestamp,
-      expeditionId: expedition.id,
-      category: 'warning',
-      title: '远征配置异常',
-      text: '无法找到可处理的事件，队伍已安全返程。',
-    }
-    return settleExpedition(
-      { ...state, journal: appendJournal(state.journal, warning) },
-      eventTimestamp,
-      'completed',
-    )
+  const eventIndex = expedition.processedEventCount + 1
+  const conditionContext = getConditionContext(state, eventIndex)
+  if (policy === undefined || region === undefined || conditionContext === null) {
+    return settleInvalidConfiguration(state, eventTimestamp, '区域或方针无效。')
   }
 
-  const selected = weightedChoice(
+  const selection = selectAdventureEvent(
+    getRegionEvents(region.eventIds),
+    conditionContext,
     expedition.rngState,
-    availableEvents.map((event) => ({
-      value: event,
-      weight: event.weight * policy.eventWeightMultipliers[event.tag],
-    })),
   )
-  const resolution = resolveEffects(
-    selected.value.effects,
-    expedition.partyHeroIds,
-    policy,
-    {
-      heroes: state.heroes,
-      loot: expedition.carriedLoot,
-      rngState: selected.nextState,
-      messages: [],
-      usedAbilityCheck: false,
-    },
-  )
-  const processedEventCount = expedition.processedEventCount + 1
-  const eventEntry: JournalEntry = {
-    id: `${expedition.id}-event-${processedEventCount}`,
+  if (selection.event === null) {
+    const detail =
+      selection.fallbackReason === 'no-positive-weight-events'
+        ? '符合条件的事件权重均为零。'
+        : '没有事件满足当前条件。'
+    return settleInvalidConfiguration(state, eventTimestamp, detail)
+  }
+
+  const resolution = resolveAdventureEvent(selection.event, {
+    heroes: state.heroes,
+    partyHeroIds: expedition.partyHeroIds,
+    loot: expedition.carriedLoot,
+    eventFlags: expedition.eventFlags,
+    rngState: selection.nextRngState,
+    policyModifier: getEventPolicyModifier(selection.event, expedition.policy),
     timestamp: eventTimestamp,
     expeditionId: expedition.id,
-    category: getJournalCategory(selected.value, resolution.usedAbilityCheck),
-    title: selected.value.title,
-    text: [selected.value.text, ...resolution.messages].join(' '),
+    eventIndex,
+  })
+  const eventEntry: JournalEntry = {
+    id: `${expedition.id}-event-${eventIndex}`,
+    timestamp: eventTimestamp,
+    expeditionId: expedition.id,
+    category: getJournalCategory(selection.event),
+    title: selection.event.title,
+    text: [selection.event.description, ...resolution.messages]
+      .filter((part) => part !== undefined && part.length > 0)
+      .join(' '),
   }
+  const adjustedDelayMs =
+    region.eventIntervalMs +
+    Math.round(resolution.nextEventDelayAdjustmentSeconds * 1_000)
   const processedState: GameState = {
     ...state,
     updatedAt: Math.max(state.updatedAt, eventTimestamp),
     heroes: resolution.heroes,
     activeExpedition: {
       ...expedition,
-      rngState: resolution.rngState,
+      rngState: resolution.nextRngState,
       lastProcessedAt: eventTimestamp,
-      nextEventAt: eventTimestamp + region.eventIntervalMs,
-      processedEventCount,
+      nextEventAt: Math.max(eventTimestamp, eventTimestamp + adjustedDelayMs),
+      processedEventCount: eventIndex,
       carriedLoot: resolution.loot,
+      eventFlags: resolution.eventFlags,
     },
-    journal: appendJournal(state.journal, eventEntry),
+    journal: appendJournal(
+      state.journal,
+      eventEntry,
+      ...resolution.journalEntries,
+    ),
   }
 
-  if (processedEventCount >= expedition.maxEventCount) {
+  if (eventIndex >= expedition.maxEventCount) {
+    return settleExpedition(processedState, eventTimestamp, 'completed')
+  }
+  if (resolution.requestedReturnReason !== null) {
     return settleExpedition(processedState, eventTimestamp, 'completed')
   }
   if (

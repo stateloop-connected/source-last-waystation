@@ -30,5 +30,6 @@ export type ExpeditionState = {
   processedEventCount: number
   maxEventCount: number
   carriedLoot: ExpeditionLoot
+  eventFlags: string[]
   status: ExpeditionStatus
 }
