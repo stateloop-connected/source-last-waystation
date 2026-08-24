@@ -1,0 +1,45 @@
+name: 功能建议
+description: 提议与项目路线图一致的改进
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: 当前项目仍处于 alpha。请先描述问题，再描述期望方案。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 这个问题影响什么用户或流程？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 描述最小可行行为，不需要提供完整实现。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考虑过的替代方案
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 主要范围
+      options:
+        - 可访问性或交互
+        - 测试或开发体验
+        - 存档或兼容性
+        - 现有玩法改进
+        - 后续内容方向
+        - 文档
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 其他上下文
+      description: 可提供草图或非敏感示例，请勿附带私人数据。

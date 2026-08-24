@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 480" role="img" aria-labelledby="title description">
+  <title id="title">黑杉林边境</title>
+  <desc id="description">雾气中的黑杉林、山脊与一座亮着灯的边境瞭望塔</desc>
+  <rect width="1200" height="480" fill="#171d18"/>
+  <circle cx="970" cy="86" r="47" fill="#d5c89b" opacity=".82"/>
+  <path d="M0 286 142 171l94 59 132-142 130 134 105-82 129 96 125-138 126 118 95-64 42 29v299H0Z" fill="#29312b"/>
+  <path d="M0 335 108 221l91 90 83-162 92 152 104-124 76 145 112-177 103 150 78-100 90 117 107-143 156 145v176H0Z" fill="#202721"/>
+  <g fill="#111612">
+    <path d="m45 390 54-176 54 176h-31v90H76v-90Z"/><path d="m180 402 44-141 44 141h-26v78h-36v-78Z"/>
+    <path d="m316 387 62-207 62 207h-35v93h-54v-93Z"/><path d="m452 405 48-158 48 158h-28v75h-40v-75Z"/>
+    <path d="m725 394 58-190 58 190h-33v86h-50v-86Z"/><path d="m868 407 47-155 47 155h-27v73h-40v-73Z"/>
+    <path d="m1031 388 60-201 60 201h-34v92h-52v-92Z"/>
+  </g>
+  <g transform="translate(585 208)">
+    <path d="M23 84h92l-12 196H35Z" fill="#171714" stroke="#596050" stroke-width="5"/>
+    <path d="m7 84 62-53 62 53Z" fill="#0d110e" stroke="#596050" stroke-width="5"/>
+    <path d="M48 103h42v43H48Z" fill="#e5b865"/>
+    <path d="M63 103v43M48 124h42" stroke="#76572c" stroke-width="4"/>
+    <path d="M56 208h34v72H56Z" fill="#0b0e0b"/>
+    <path d="M35 172h68M29 224h79" stroke="#596050" stroke-width="5"/>
+  </g>
+  <path d="M0 353c165-41 288 32 449-4 170-38 268 10 403 5 145-6 211-44 348-13v63c-177-22-272 27-430 22-175-6-279-38-425-7-133 28-231 4-345 19Z" fill="#8b9689" opacity=".18"/>
+  <path d="M0 411c153-31 264 17 394 2 162-19 273 22 418 18 145-3 258-29 388-12v61H0Z" fill="#b8bcae" opacity=".1"/>
+</svg>

@@ -1,0 +1,67 @@
+name: Bug 报告
+description: 报告可以稳定复现的错误或回归
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: 感谢报告问题。请勿粘贴令牌、账号信息、个人路径或其他敏感数据。
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 简要说明问题及其影响。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 请给出从新存档开始的最小步骤。
+      placeholder: |
+        1. 打开……
+        2. 选择……
+        3. 观察到……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 浏览器和操作系统
+      placeholder: 例如 Chrome 128 / Windows 11
+    validations:
+      required: true
+  - type: dropdown
+    id: save_available
+    attributes:
+      label: 是否可以提供已脱敏存档
+      options:
+        - 可以
+        - 不可以
+        - 不适用
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: 控制台错误
+      description: 如有，请粘贴项目相关错误并移除个人信息。
+      render: shell
+  - type: textarea
+    id: additional
+    attributes:
+      label: 其他信息
+      description: 可补充截图或其他非敏感上下文。
