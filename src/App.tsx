@@ -14,15 +14,31 @@ import { useGame } from './app/useGame'
 import { ActiveExpedition } from './components/ActiveExpedition'
 import { AdventureJournal } from './components/AdventureJournal'
 import { DeveloperTools } from './components/DeveloperTools'
+import {
+  MotionPreferenceControl,
+  OfflineSummary,
+  ReturnSummary,
+} from './components/expedition-scene'
 import { ExpeditionSetup } from './components/ExpeditionSetup'
 import { ResourceBar } from './components/ResourceBar'
 import { SaveTools } from './components/SaveTools'
 import { StationPanel } from './components/StationPanel'
+import { useVisualEffects } from './presentation/useVisualEffects'
+import type { ProgressSummaryVisualEvent } from './presentation/visual-events'
 import './styles/app.css'
 
 const REGION = REGION_DEFINITIONS[0]
 
 export default function App() {
+  const {
+    events: visualEvents,
+    returnSummary,
+    progressSummary,
+    isPageVisible,
+    dismissEvent,
+    dismissReturnSummary,
+    dismissProgressSummary,
+  } = useVisualEffects()
   const {
     game,
     now,
@@ -42,6 +58,10 @@ export default function App() {
   const [selectedHeroIds, setSelectedHeroIds] = useState<string[]>([])
   const [selectedPolicy, setSelectedPolicy] =
     useState<ExpeditionPolicy>('explore')
+  const transientProgressSummary = visualEvents.findLast(
+    (event): event is ProgressSummaryVisualEvent =>
+      event.type === 'progressSummary',
+  )
 
   const startDisabledReason = useMemo(() => {
     const preview = previewStartExpedition(
@@ -105,6 +125,27 @@ export default function App() {
 
       <main id="main-content" className="main-layout">
         <div className="game-column">
+          {returnSummary !== null ? (
+            <ReturnSummary
+              heroes={game.heroes}
+              onDismiss={dismissReturnSummary}
+              summary={returnSummary}
+            />
+          ) : null}
+          {progressSummary !== null ? (
+            <OfflineSummary
+              heroes={game.heroes}
+              onDismiss={dismissProgressSummary}
+              summary={progressSummary}
+            />
+          ) : null}
+          {transientProgressSummary !== undefined ? (
+            <OfflineSummary
+              heroes={game.heroes}
+              onDismiss={() => dismissEvent(transientProgressSummary.id)}
+              summary={transientProgressSummary}
+            />
+          ) : null}
           {game.activeExpedition === null ? (
             <ExpeditionSetup
               heroes={game.heroes}
@@ -123,6 +164,8 @@ export default function App() {
               heroes={game.heroes}
               now={now}
               regionName={REGION.name}
+              visualEvents={visualEvents}
+              isPageVisible={isPageVisible}
               onRetreat={retreat}
             />
           )}
@@ -141,6 +184,9 @@ export default function App() {
       </main>
 
       <footer className="utility-band">
+        <div className="utility-preferences">
+          <MotionPreferenceControl />
+        </div>
         <SaveTools
           lastSavedAt={lastSavedAt}
           saveMessage={saveMessage}
