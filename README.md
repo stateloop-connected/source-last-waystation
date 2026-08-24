@@ -10,7 +10,7 @@ Last Waystation 是一款运行在浏览器中的单机挂机冒险游戏。玩�
 
 ## 在线试玩
 
-当前仓库没有可确认的公开试玩地址。仓库所有者启用 GitHub Pages 并完成首次部署后，可以在仓库的 **Settings → Pages** 页面找到实际地址；请不要把尚未部署的地址当成已上线服务。
+在线试玩：[https://wxgith.github.io/last-waystation/](https://wxgith.github.io/last-waystation/)
 
 ## 当前可玩内容
 
