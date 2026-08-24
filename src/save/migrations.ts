@@ -192,6 +192,8 @@ function isJournalEntry(value: unknown): value is JournalEntry {
     isTimestamp(value.timestamp) &&
     (value.expeditionId === undefined ||
       isNonEmptyString(value.expeditionId)) &&
+    (value.sourceEventId === undefined ||
+      isNonEmptyString(value.sourceEventId)) &&
     typeof value.category === 'string' &&
     JOURNAL_CATEGORIES.has(value.category) &&
     isNonEmptyString(value.title) &&

@@ -60,6 +60,9 @@ describe('black fir forest event integration', () => {
       seen.set(entry.title, resolved)
       expect(JOURNAL_CATEGORIES).toContain(entry.category)
       expect(entry.text.length).toBeGreaterThan(0)
+      expect(
+        ADVENTURE_EVENTS.find((event) => event.id === entry.sourceEventId)?.title,
+      ).toBe(entry.title)
       expect(resolved.activeExpedition?.rngState).toSatisfy(
         (value: number | undefined) =>
           value !== undefined && Number.isSafeInteger(value) && value > 0,
@@ -112,5 +115,25 @@ describe('black fir forest event integration', () => {
         .reduce((sum, hero) => sum + hero.health, 0) ?? 210)
     expect(lostTrailDamage).toBeGreaterThanOrEqual(5)
     expect(lostTrailDamage).toBeLessThanOrEqual(12)
+  })
+
+  it('只给解析器选中的主事件日志记录来源事件 ID', () => {
+    const completed = advanceTo(start(20260824), NOW + 90_000)
+    const mainEventEntries = completed.journal.filter((entry) =>
+      /-event-\d+$/.test(entry.id),
+    )
+    const supportingEntries = completed.journal.filter(
+      (entry) => !/-event-\d+$/.test(entry.id),
+    )
+
+    expect(mainEventEntries).toHaveLength(6)
+    expect(
+      mainEventEntries.every((entry) =>
+        ADVENTURE_EVENTS.some((event) => event.id === entry.sourceEventId),
+      ),
+    ).toBe(true)
+    expect(
+      supportingEntries.every((entry) => entry.sourceEventId === undefined),
+    ).toBe(true)
   })
 })

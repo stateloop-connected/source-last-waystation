@@ -14,6 +14,7 @@ export type JournalEntry = {
   id: string
   timestamp: number
   expeditionId?: string
+  sourceEventId?: string
   category: JournalCategory
   title: string
   text: string
