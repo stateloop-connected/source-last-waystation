@@ -1,5 +1,10 @@
 import type { GameState } from '../core/model/gameState'
 import { advanceTo } from '../core/simulation/advanceTo'
+import {
+  deriveTransitionSummary,
+  hasTransitionProgress,
+  type GameTransitionSummary,
+} from '../presentation/visual-events'
 import { createSaveFile, decodeSave, encodeSave } from './saveCodec'
 import { isGameState, isSaveFileV2 } from './migrations'
 import { normalizeSaveForNow } from './saveNormalization'
@@ -25,6 +30,7 @@ export type SaveLoadResult =
       state: GameState
       source: 'storage' | 'fallback'
       migration?: 'v1-persisted' | 'v1-write-failed'
+      transitionSummary?: GameTransitionSummary
     }
   | (SaveFailure & {
       state: GameState
@@ -35,6 +41,7 @@ export type SaveImportResult =
   | {
       ok: true
       state: GameState
+      transitionSummary?: GameTransitionSummary
     }
   | (SaveFailure & {
       state: GameState
@@ -195,6 +202,13 @@ export function createSaveRepository(
       if (!isGameState(state)) {
         throw new Error('存档推进后状态无效。')
       }
+      const transitionSummary = deriveTransitionSummary(
+        normalized.game,
+        state,
+      )
+      const progressMetadata = hasTransitionProgress(transitionSummary)
+        ? { transitionSummary }
+        : {}
       if (decoded.sourceSchemaVersion === 1) {
         const migratedSave = createSaveFile(state, state.lastAdvancedAt)
         if (!isSaveFileV2(migratedSave)) {
@@ -212,6 +226,7 @@ export function createSaveRepository(
           state,
           source: 'storage',
           migration: persisted ? 'v1-persisted' : 'v1-write-failed',
+          ...progressMetadata,
         }
       }
 
@@ -219,6 +234,7 @@ export function createSaveRepository(
         ok: true,
         state,
         source: 'storage',
+        ...progressMetadata,
       }
     } catch {
       return {
@@ -243,6 +259,7 @@ export function createSaveRepository(
     }
 
     let imported: GameState
+    let transitionSummary: GameTransitionSummary
     try {
       const normalized = normalizeSaveForNow(
         decoded.value,
@@ -252,6 +269,10 @@ export function createSaveRepository(
           : 'preserve',
       )
       imported = advanceTo(normalized.game, now)
+      transitionSummary = deriveTransitionSummary(
+        normalized.game,
+        imported,
+      )
     } catch {
       return {
         ...failure(
@@ -300,7 +321,13 @@ export function createSaveRepository(
       }
     }
 
-    return { ok: true, state: imported }
+    return {
+      ok: true,
+      state: imported,
+      ...(hasTransitionProgress(transitionSummary)
+        ? { transitionSummary }
+        : {}),
+    }
   }
 
   const exportSave = (
